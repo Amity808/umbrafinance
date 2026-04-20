@@ -1,0 +1,2 @@
+@fhenixprotocol/cofhe-contracts/=node_modules/@fhenixprotocol/cofhe-contracts/
+@openzeppelin/contracts/=node_modules/@openzeppelin/contracts/
