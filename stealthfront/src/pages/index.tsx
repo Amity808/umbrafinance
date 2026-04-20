@@ -55,7 +55,7 @@ const Home: NextPage = () => {
                     </button>
                 </Link>
                 <button onClick={() => alert('Demo: Start the WhatsApp server (`node server.js`) and text "invoice 500 web design" to generate a FHE secure link!')} className="px-8 py-4 w-full sm:w-auto bg-transparent border border-gray-700 hover:border-gray-500 text-white rounded-lg transition-colors font-medium">
-                    Try WhatsApp Bot
+                    Try on WhatsApp (Coming soon)
                 </button>
             </div>
         </div>
