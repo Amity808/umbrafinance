@@ -215,7 +215,7 @@ export default function Dashboard() {
       if (linkError) {
           toast.error(linkErrorObj?.message?.split('\n')[0] || "Failed to save invoice.");
       }
-  }, [linkError]);
+  }, [linkError, linkErrorObj?.message]);
   
   useEffect(() => {
       if (withdrawSuccess) {
@@ -228,7 +228,7 @@ export default function Dashboard() {
       if (withdrawError) {
           toast.error(withdrawErrorObj?.message?.split('\n')[0] || "Withdrawal failed.");
       }
-  }, [withdrawError]);
+  }, [withdrawError, withdrawErrorObj?.message]);
 
   useEffect(() => {
       if (usernameSuccess) {
@@ -236,13 +236,13 @@ export default function Dashboard() {
           setNewUsername('');
           refetchUsername();
       }
-  }, [usernameSuccess]);
+  }, [usernameSuccess, refetchUsername]);
 
   useEffect(() => {
       if (usernameRegError) {
           toast.error(usernameErrorObj?.message?.split('\n')[0] || "Username registration failed.");
       }
-  }, [usernameRegError]);
+  }, [usernameRegError, usernameErrorObj?.message]);
 
   const handleRegisterUsername = () => {
       if (!newUsername.trim()) {

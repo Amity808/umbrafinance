@@ -123,7 +123,7 @@ export default function PaymentPage() {
 
           <div className="mb-8 p-1">
             <p className="text-gray-500 text-xs uppercase tracking-wider mb-1">Description</p>
-            <p className="text-gray-300 italic">"{desc ? decodeURIComponent(desc) : ""}"</p>
+            <p className="text-gray-300 italic">&quot;{desc ? decodeURIComponent(desc) : ""}&quot;</p>
           </div>
 
           {!isConnected ? (
