@@ -106,7 +106,60 @@ const Home: NextPage = () => {
         </div>
       </main>
 
-      <footer className="text-center py-8 text-gray-600 text-xs tracking-widest font-mono uppercase bg-black relative z-10">
+      {/* How it Works Section */}
+      <section className="py-24 relative z-10 border-t border-gray-900/50 bg-[#070707] overflow-hidden">
+        {/* Subtle background glow for section */}
+        <div className="absolute top-0 right-[-10%] w-[40%] h-[100%] bg-blue-900/10 rounded-full blur-[120px] pointer-events-none"></div>
+        <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[100%] bg-purple-900/10 rounded-full blur-[120px] pointer-events-none"></div>
+
+        <div className="max-w-7xl mx-auto px-6 relative z-10">
+            <div className="text-center mb-20">
+                <h2 className="text-4xl md:text-5xl font-bold tracking-tight mb-6">
+                    How <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">StealthPay</span> Works
+                </h2>
+                <p className="text-gray-400 max-w-2xl mx-auto text-lg font-light leading-relaxed">
+                    The underlying infrastructure leverages the <strong className="text-purple-300 font-normal">Fhenix homomorphic encryption network</strong> to process payments. Transactions compute on-chain without exposing the underlying values or user mappings.
+                </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                {/* Card 1 */}
+                <div className="bg-gradient-to-b from-[#111] to-[#0a0a0a] border border-gray-800/80 rounded-3xl p-8 hover:border-purple-500/40 transition-all duration-300 hover:-translate-y-1 shadow-lg hover:shadow-[0_10px_40px_rgba(168,85,247,0.15)] group">
+                    <div className="w-14 h-14 rounded-2xl bg-purple-900/20 flex items-center justify-center border border-purple-500/20 mb-8 group-hover:scale-110 transition-transform duration-300 group-hover:bg-purple-900/40">
+                        <svg className="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-100 mb-4">1. Generate Payment Link</h3>
+                    <p className="text-gray-500 text-sm leading-relaxed">
+                        Create an invoice alias securely registered to your true EVM address. Share your link or alias via WhatsApp, email, or any messenger without ever exposing your sensitive crypto wallet address to the public.
+                    </p>
+                </div>
+
+                {/* Card 2 */}
+                <div className="bg-gradient-to-b from-[#111] to-[#0a0a0a] border border-gray-800/80 rounded-3xl p-8 hover:border-blue-500/40 transition-all duration-300 hover:-translate-y-1 shadow-lg hover:shadow-[0_10px_40px_rgba(59,130,246,0.15)] group">
+                    <div className="w-14 h-14 rounded-2xl bg-blue-900/20 flex items-center justify-center border border-blue-500/20 mb-8 group-hover:scale-110 transition-transform duration-300 group-hover:bg-blue-900/40">
+                        <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-100 mb-4">2. FHE Encrypted Routing</h3>
+                    <p className="text-gray-500 text-sm leading-relaxed">
+                        The sender pays the invoice. Transaction amounts and mappings are fully homomorphically encrypted. The Fhenix network computations verify and route the transfer cleanly without seeing the plaintext data.
+                    </p>
+                </div>
+
+                {/* Card 3 */}
+                <div className="bg-gradient-to-b from-[#111] to-[#0a0a0a] border border-gray-800/80 rounded-3xl p-8 hover:border-green-500/40 transition-all duration-300 hover:-translate-y-1 shadow-lg hover:shadow-[0_10px_40px_rgba(34,197,94,0.15)] group">
+                    <div className="w-14 h-14 rounded-2xl bg-green-900/20 flex items-center justify-center border border-green-500/20 mb-8 group-hover:scale-110 transition-transform duration-300 group-hover:bg-green-900/40">
+                        <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-100 mb-4">3. Stealth Vault Settlement</h3>
+                    <p className="text-gray-500 text-sm leading-relaxed">
+                        Funds permanently settle into your encrypted StealthPay vault. Use the Fhenix CoFHE network to securely deseal your live balance directly into your browser session, or withdraw anytime confidentially.
+                    </p>
+                </div>
+            </div>
+        </div>
+      </section>
+
+      <footer className="text-center py-8 text-gray-600 text-xs tracking-widest font-mono uppercase bg-[#020202] border-t border-gray-900/50 relative z-10">
         Built for the Fhenix Buildathon 2026
       </footer>
     </div>
