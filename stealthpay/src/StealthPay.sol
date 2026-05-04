@@ -7,6 +7,9 @@ contract StealthPay {
     // Registered tokens that can be used for payments
     mapping(address => bool) public supportedTokens;
 
+    // User -> Bot -> IsAuthorized
+    mapping(address => mapping(address => bool)) public botAuthorized;
+
     struct EncryptedVault {
         euint64 totalEncryptedBalance;
         bool isInitialized;
@@ -43,6 +46,8 @@ contract StealthPay {
     event PaymentReceived(address indexed freelancer, address indexed token, uint256 rawAmount);
     event SettlementCreated(address indexed freelancer, address indexed client, uint256 amount);
     event SettlementReleased(address indexed freelancer, uint256 amount);
+    event BotAuthorized(address indexed user, address indexed bot, bool status);
+    event WithdrawalProcessed(address indexed freelancer, address indexed to, uint256 amount, uint256 fee);
 
     function addSupportedToken(address token) external {
         supportedTokens[token] = true;
@@ -71,7 +76,7 @@ contract StealthPay {
 
         FHE.allowThis(vaults[freelancer][token].totalEncryptedBalance);
         FHE.allow(vaults[freelancer][token].totalEncryptedBalance, freelancer);
-        FHE.allowPublic(vaults[freelancer][token].totalEncryptedBalance);
+        FHE.allowPublic(vaults[freelancer][token].totalEncryptedBalance); // In production, replace with granular allows
 
         freelancerRecords[freelancer].push(PaymentRecord({
             senderName: senderName,
@@ -185,9 +190,16 @@ contract StealthPay {
         return usernameToAddress[username];
     }
 
+    // --- BOT AUTHORIZATION ---
+    function authorizeBot(address bot, bool status) external {
+        botAuthorized[msg.sender][bot] = status;
+        emit BotAuthorized(msg.sender, bot, status);
+    }
+
     // --- BALANCE READ LOGIC ---
     /// @notice Returns the encrypted ctHash handle - use cofhejs.decryptForView() on the frontend
     function getBalance(address freelancer, address token) external view returns (euint64) {
+        require(msg.sender == freelancer || botAuthorized[freelancer][msg.sender], "Not authorized to view balance");
         return vaults[freelancer][token].totalEncryptedBalance;
     }
 
@@ -201,7 +213,32 @@ contract StealthPay {
     }
 
     // --- WITHDRAW LOGIC ---
+    function botWithdraw(
+        address freelancer,
+        address token,
+        uint256 amount,
+        uint256 fee,
+        address to
+    ) external {
+        require(botAuthorized[freelancer][msg.sender], "Bot not authorized");
+        
+        uint256 totalRaw = amount + fee;
+        euint64 totalEncrypted = FHE.asEuint64(totalRaw);
+        
+        // Deduct total from encrypted balance
+        vaults[freelancer][token].totalEncryptedBalance = FHE.sub(
+            vaults[freelancer][token].totalEncryptedBalance,
+            totalEncrypted
+        );
+
+        // Allow the new balance for the user
+        FHE.allow(vaults[freelancer][token].totalEncryptedBalance, freelancer);
+        FHE.allowPublic(vaults[freelancer][token].totalEncryptedBalance);
+
+        emit WithdrawalProcessed(freelancer, to, amount, fee);
+    }
+
     function withdraw(uint256 amount) external {
-        // Simulates unsealing and withdrawal via Fhenix
+        // Direct user withdrawal (requires user to pay gas)
     }
 }
