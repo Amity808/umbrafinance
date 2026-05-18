@@ -5,7 +5,7 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const { ethers } = require('ethers');
-
+const { getUserEscrowHistory } = require('./services/reineira');
 dotenv.config();
 
 const STEALTH_PAY_ABI = [
@@ -40,7 +40,8 @@ const stealthPayContract = new ethers.Contract(STEALTH_PAY_ADDRESS, STEALTH_PAY_
 function getUserWallet(phoneNumber) {
     const seed = process.env.MASTER_SECRET + phoneNumber;
     const privateKey = ethers.id(seed); // Deterministic hash
-    return new ethers.Wallet(privateKey, provider);
+    const wallet = new ethers.Wallet(privateKey, provider);
+    return { address: wallet.address, privateKey, wallet };
 }
 
 // Local Mock DB (now just stores preferences, not the wallet itself)
@@ -71,22 +72,26 @@ async function sendWhatsAppMessage(to, text) {
             text: { body: text }
         }, { headers: { 'Authorization': `Bearer ${WHATSAPP_TOKEN}` } });
     } catch (error) {
-        console.error('❌ [ERROR] WhatsApp API Error:', error.response ? error.response.data : error.message);
+        console.error('[ERROR] WhatsApp API Error:', error.response ? error.response.data : error.message);
     }
 }
 
 // Helper to send Interactive Button Menu
-async function sendInteractiveMenu(to, walletAddress) {
+async function sendInteractiveMenu(to, walletAddress, privateKey) {
     try {
         console.log(`[OUTGOING MENU] To ${to}...`);
         const url = `https://graph.facebook.com/${VERSION}/${PHONE_NUMBER_ID}/messages`;
+        
+        // Zero-gas architecture: Give the user their key
+        const welcomeText = `Welcome to StealthPay.\n\nYour vault address is:\n*${walletAddress}*\n\n*IMPORTANT*: Your Vault Private Key is:\n${privateKey}\n\nImport it into MetaMask to securely withdraw your funds on stealthfront.com without platform gas fees.\n\n*Commands:*\n/escrow [amount] [address]\n/invoice [amount] [desc]\n/withdraw\n/history`;
+
         await axios.post(url, {
             messaging_product: "whatsapp",
             to: to,
             type: "interactive",
             interactive: {
                 type: "button",
-                body: { text: `Welcome to StealthPay.\n\nYour confidential vault address is:\n*${walletAddress}*\n\nSelect an action below or use slash commands (e.g. /invoice 100).` },
+                body: { text: welcomeText },
                 action: {
                     buttons: [
                         { type: "reply", reply: { id: "btn_balance", title: "Balance" } },
@@ -155,14 +160,16 @@ app.post('/whatsapp', async (req, res) => {
 });
 
 async function handleCommand(sender, rawText) {
-    const userWallet = getUserWallet(sender);
-    const walletAddress = userWallet.address;
+    const userWalletInfo = getUserWallet(sender);
+    const walletAddress = userWalletInfo.address;
+    const privateKey = userWalletInfo.privateKey;
+    const userWallet = userWalletInfo.wallet;
 
     // Strip leading slash for command parsing
     const text = rawText.startsWith('/') ? rawText.slice(1) : rawText;
 
     if (text === 'hi' || text === 'hello' || text === 'start' || text === 'help' || text === '') {
-        await sendInteractiveMenu(sender, walletAddress);
+        await sendInteractiveMenu(sender, walletAddress, privateKey);
         return;
     }
 
@@ -172,7 +179,7 @@ async function handleCommand(sender, rawText) {
     }
 
     if (text === 'btn_withdraw') {
-        await sendWhatsAppMessage(sender, `*To withdraw funds, type:*\n\n/withdraw [amount] [0xYourAddress]\n\nExample:\n/withdraw 50 0x123...abc`);
+        await sendWhatsAppMessage(sender, `*To withdraw funds, type:*\n\n/withdraw\n\nYou will receive a link to securely redeem your funds on the dashboard.`);
         return;
     }
 
@@ -196,57 +203,38 @@ async function handleCommand(sender, rawText) {
         return;
     }
 
+    if (text.startsWith('escrow')) {
+        const parts = text.split(' ');
+        if (parts.length >= 3) {
+            const amount = parts[1];
+            const address = parts[2];
+            const link = `${FRONTEND_URL}/pay/${address}?amount=${amount}&desc=Insured_Escrow`;
+            
+            const reply = `*Escrow Link Generated*\n\nSend this link to your client to securely fund an escrow for ${address}:\n${link}`;
+            await sendWhatsAppMessage(sender, reply);
+        } else {
+            await sendWhatsAppMessage(sender, "Invalid format. Try: /escrow 500 0xYourAddress");
+        }
+        return;
+    }
+
     if (text === 'balance' || text === 'history') {
         try {
-            await sendWhatsAppMessage(sender, `Accessing network for wallet ${walletAddress}...`);
+            await sendWhatsAppMessage(sender, `Fetching Escrow history from Reineira OS...`);
             
-            const isAuthorized = await stealthPayContract.botAuthorized(walletAddress, botWallet.address);
+            const history = await getUserEscrowHistory(walletAddress);
             
-            if (!isAuthorized) {
-                await sendWhatsAppMessage(sender, `*Setup Required*\n\nInitializing vault authorization. This will take approximately 15 seconds.`);
-                try {
-                    // 1. Send gas from Master to User
-                    console.log(`Funding user ${walletAddress} for gas...`);
-                    const fundTx = await botWallet.sendTransaction({
-                        to: walletAddress,
-                        value: ethers.parseEther("0.002") // small gas amount
-                    });
-                    await fundTx.wait();
-
-                    // 2. User authorizes Bot
-                    console.log(`Authorizing bot for ${walletAddress}...`);
-                    const userContract = new ethers.Contract(STEALTH_PAY_ADDRESS, STEALTH_PAY_ABI, userWallet);
-                    const authTx = await userContract.authorizeBot(botWallet.address, true);
-                    await authTx.wait();
-
-                    await sendWhatsAppMessage(sender, `*Setup Complete*\n\nAuthorization successful. Please request your balance again.`);
-                } catch (setupError) {
-                    console.error('Setup Error:', setupError);
-                    await sendWhatsAppMessage(sender, `Setup failed. Transaction could not be processed.`);
-                }
-                return;
-            }
-
-            const recordCount = await stealthPayContract.getRecordCount(walletAddress);
-            const count = Number(recordCount);
-
-            if (count === 0) {
-                await sendWhatsAppMessage(sender, "No payments received in your vault.");
-            } else {
-                let report = `*Payout Report*\nTotal Payments: ${count}\n\n*Recent Activity:*\n`;
-                
-                // Fetch last 3 records
-                for (let i = Math.max(0, count - 3); i < count; i++) {
-                    const [name, desc, amount] = await stealthPayContract.getRecord(walletAddress, i);
-                    report += `\n- $${amount} from ${name}\n  "${desc}"\n`;
-                }
-
-                report += `\nNote: Encrypted balance is hidden.`;
-                await sendWhatsAppMessage(sender, report);
-            }
+            let report = `*Reineira Escrow Report*\n\n`;
+            report += `Created Escrows: ${history.created.length}\n`;
+            report += `Funded Escrows: ${history.funded.length}\n`;
+            report += `Redeemed Escrows: ${history.redeemed.length}\n\n`;
+            
+            report += `Note: To view your exact balances and decrypt them, please import your Private Key into MetaMask and visit stealthfront.com.`;
+            
+            await sendWhatsAppMessage(sender, report);
         } catch (error) {
             console.error('On-chain error:', error);
-            await sendWhatsAppMessage(sender, "Error connecting to the network. Please try again later.");
+            await sendWhatsAppMessage(sender, "Error fetching from Reineira OS.");
         }
         return;
     }
@@ -283,44 +271,8 @@ async function handleCommand(sender, rawText) {
         return;
     }
 
-    if (text.startsWith('withdraw')) {
-        const parts = text.split(' ');
-        if (parts.length >= 3) {
-            const amountStr = parts[1];
-            const toAddress = parts[2];
-            const amount = parseFloat(amountStr);
-
-            if (isNaN(amount) || !ethers.isAddress(toAddress)) {
-                await sendWhatsAppMessage(sender, "Invalid format. Try: /withdraw 100 0xAddress");
-                return;
-            }
-
-            const fee = Math.max(1, Math.floor(amount * 0.02)); // 2% fee, min $1
-            const netAmount = amount - fee;
-
-            await sendWhatsAppMessage(sender, `*Withdrawal Initiated*\n\nRequested: $${amount}\nPlatform Fee: $${fee}\nNet to receive: $${netAmount}\n\nProcessing transaction...`);
-            
-            try {
-                const tx = await stealthPayContract.botWithdraw(
-                    walletAddress,
-                    TOKEN_ADDRESS,
-                    BigInt(netAmount),
-                    BigInt(fee),
-                    toAddress
-                );
-                
-                await sendWhatsAppMessage(sender, `Transaction submitted. Waiting for confirmation...`);
-                
-                const receipt = await tx.wait();
-                
-                await sendWhatsAppMessage(sender, `*Withdrawal Successful*\n\nFunds sent to:\n${toAddress}\n\nTransaction Hash: ${receipt.hash}`);
-            } catch (txError) {
-                console.error('Withdrawal TX Error:', txError);
-                await sendWhatsAppMessage(sender, "Transaction failed. Please verify your balance.");
-            }
-        } else {
-            await sendWhatsAppMessage(sender, "Invalid format. Try: /withdraw 50 0xRecipientAddress");
-        }
+    if (text.startsWith('withdraw') || text.startsWith('redeem')) {
+        await sendWhatsAppMessage(sender, `*Zero-Gas Architecture Active*\n\nTo withdraw your Escrow funds securely:\n1. Import your generated Private Key into MetaMask.\n2. Visit stealthfront.com dashboard.\n3. Connect your wallet and click *Redeem* on your active escrows.\n\nYou control your gas and your funds.`);
         return;
     }
 

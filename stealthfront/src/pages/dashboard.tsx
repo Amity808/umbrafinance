@@ -7,6 +7,7 @@ import { parseUnits } from 'viem';
 import { ReineiraSDK } from '@reineira-os/sdk';
 import { STEALTH_PAY_ABI, MOCK_STEALTHPAY_ADDRESS, MOCK_TOKEN_ADDRESS } from '../config/contracts';
 import { Toaster, toast } from 'react-hot-toast';
+import { getUserEscrows, redeemEscrow } from '../services/reineiraService';
 // @ts-ignore - cofhejs uses 'bundler' moduleResolution exports, Next.js handles it at runtime
 import { cofhejs } from 'cofhejs/web';
 
@@ -143,6 +144,9 @@ export default function Dashboard() {
   const [isDecrypting, setIsDecrypting] = useState(false);
   const [newUsername, setNewUsername] = useState('');
   const [recordAmounts, setRecordAmounts] = useState<Record<number, bigint>>({});
+  const [escrowHistory, setEscrowHistory] = useState<{ created: any[], funded: any[], redeemed: any[] } | null>(null);
+  const [isRedeeming, setIsRedeeming] = useState(false);
+  const { data: walletClient } = useWalletClient();
   
   const handleAmountLoaded = useCallback((idx: number, amount: bigint) => {
       setRecordAmounts(prev => ({ ...prev, [idx]: amount }));
@@ -338,40 +342,32 @@ export default function Dashboard() {
   };
 
 
-  // PRIVARA SDK Action
-  const handleVerifyPrivara = async () => {
-      if (!address) {
-          toast.error("Please connect your wallet first.");
-          return;
-      }
-      try {
-          setPrivaraStatus('Initializing Reineira SDK Arbitrum Provider...');
-          toast("Starting Privara Escrow...", { icon: '🛡️' });
-          
-          const sdk = ReineiraSDK.create({
-              network: "testnet",
-              privateKey: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
-              rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc" 
-          });
-          
-          setPrivaraStatus('Creating Mock Conditional Escrow...');
-          const escrow = await sdk.escrow.create({
-              amount: 500000n,
-              owner: address
-          });
-          
-          const successStr = `Shield Secured! Escrow ID ${escrow.id?.toString() || 'Unknown'} Bound to Address: ${address.slice(0, 8)}...`;
-          setPrivaraStatus(successStr);
-          toast.success("Privara Identity Shield executed successfully!");
-          
-      } catch (e: any) {
-          if (e.message.includes("TextDecoder") || e.message.includes("FHE")) {
-              setPrivaraStatus(`Shield Secured! Escrow ID: ${Math.floor(Math.random() * 10000)} Bound to Address: ${address?.slice(0, 8)}... (FHE WASM Environment Bypassed)`);
-              toast.success("Privara Identity Shield executed successfully!");
-          } else {
-              setPrivaraStatus(`Privara Error: ${e.message}`);
-              toast.error(`Privara SDK Failed: ${e.message}`);
+  // LOAD ESCROW HISTORY
+  useEffect(() => {
+      const loadEscrows = async () => {
+          if (isConnected && walletClient && address) {
+              const history = await getUserEscrows(walletClient, address as string);
+              setEscrowHistory(history);
           }
+      };
+      loadEscrows();
+  }, [isConnected, walletClient, address]);
+
+  const handleRedeemEscrow = async (escrowId: bigint) => {
+      if (!walletClient) return;
+      setIsRedeeming(true);
+      toast("Redeeming Escrow...", { icon: '⏳' });
+      try {
+          await redeemEscrow(walletClient, escrowId);
+          toast.success("Successfully redeemed Escrow to your wallet!");
+          
+          // Refresh history
+          const history = await getUserEscrows(walletClient, address as string);
+          setEscrowHistory(history);
+      } catch (e: any) {
+          toast.error(e.message || "Redemption failed");
+      } finally {
+          setIsRedeeming(false);
       }
   };
 
@@ -579,26 +575,39 @@ export default function Dashboard() {
                          )}
                     </div>
                     
-                    {/* PRIVARA REAL SDK HOOK */}
+                    {/* REAL REINEIRA ESCROW LEDGER */}
                      <div className="bg-[#0a0a0a] border border-orange-900 p-6 rounded-2xl relative overflow-hidden group">
                         <div className="absolute top-0 right-0 w-8 bg-gradient-to-l from-orange-600/20 to-transparent h-full"></div>
-                        <h3 className="font-bold mb-2 flex items-center gap-2 text-orange-400">
-                            🛡️ Privara Identity & Escrow
+                        <h3 className="font-bold mb-4 flex items-center gap-2 text-orange-400">
+                            🛡️ Reineira Escrow Ledger
                         </h3>
-                        <p className="text-xs text-orange-200/60 mb-2">Initialize ReineiraOS and execute a conditional SDK escrow on Arbitrum Testnet.</p>
                         
-                        {privaraStatus && (
-                            <p className="bg-orange-950/40 text-orange-400 text-xs p-2 rounded mb-3 border border-orange-900 font-mono">
-                                {privaraStatus}
-                            </p>
+                        {!escrowHistory ? (
+                             <p className="text-xs text-orange-200/60 mb-2">Loading active escrows...</p>
+                        ) : (
+                            <div className="space-y-4">
+                                {escrowHistory.created.length === 0 && escrowHistory.funded.length === 0 && (
+                                     <p className="text-xs text-gray-500 border border-gray-800 p-4 rounded text-center">No active escrows found.</p>
+                                )}
+                                
+                                {/* Assuming events have an escrowId in args */}
+                                {escrowHistory.funded.map((evt, i) => (
+                                    <div key={i} className="bg-orange-950/40 border border-orange-900 p-3 rounded-lg flex justify-between items-center">
+                                        <div>
+                                            <p className="text-xs text-orange-300 font-bold">Escrow ID: {evt?.args?.escrowId?.toString() || "..."}</p>
+                                            <p className="text-[10px] text-gray-400">Funded on Arbitrum</p>
+                                        </div>
+                                        <button 
+                                            onClick={() => handleRedeemEscrow(evt?.args?.escrowId || 0n)}
+                                            disabled={isRedeeming}
+                                            className="text-[10px] bg-orange-600/30 text-orange-200 px-3 py-1.5 rounded hover:bg-orange-600/50 transition border border-orange-500/50 disabled:opacity-50"
+                                        >
+                                            {isRedeeming ? "Redeeming..." : "Redeem Funds"}
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
                         )}
-
-                        <button 
-                            onClick={handleVerifyPrivara}
-                            className="w-full bg-orange-600/20 hover:bg-orange-600/40 border border-orange-500/50 text-orange-400 font-bold py-2 rounded-lg transition-colors text-sm shadow-[0_0_15px_rgba(255,100,0,0.2)]"
-                        >
-                            Execute Privara SDK Link
-                        </button>
                     </div>
 
                 </div>

@@ -1,17 +1,19 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useWalletClient } from 'wagmi';
 import { parseUnits } from 'viem';
 import Head from 'next/head';
 import { Toaster, toast } from 'react-hot-toast';
 import { STEALTH_PAY_ABI, MOCK_STEALTHPAY_ADDRESS, MOCK_TOKEN_ADDRESS } from '../../config/contracts';
+import { createAndFundEscrow } from '../../services/reineiraService';
 
 export default function PaymentPage() {
   const router = useRouter();
   const { address: freelancerAddress } = router.query;
   const linkIndex = router.query.index !== undefined ? Number(router.query.index) : null;
   const { isConnected } = useAccount();
+  const { data: walletClient } = useWalletClient();
 
   const [amount, setAmount] = useState((router.query.amount as string) || '0');
   const [desc, setDesc] = useState((router.query.desc as string) || 'No description');
@@ -33,20 +35,35 @@ export default function PaymentPage() {
     }
   }, [linkData]);
 
-  const { data: hash, isPending, isError, error, writeContract } = useWriteContract();
+  const { data: hash, isPending: contractIsPending, isError, error, writeContract } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
 
-  const handlePay = () => {
+  const [isSdkPending, setIsSdkPending] = useState(false);
+  const [sdkSuccess, setSdkSuccess] = useState(false);
+
+  const handlePay = async () => {
     if (!freelancerAddress) return;
     
     if (linkIndex !== null) {
-        toast("Sending to Escrow via FHE...", { icon: '🛡️' });
-        writeContract({
-            address: MOCK_STEALTHPAY_ADDRESS,
-            abi: STEALTH_PAY_ABI,
-            functionName: 'payWithEscrow',
-            args: [freelancerAddress as `0x${string}`, BigInt(linkIndex), MOCK_TOKEN_ADDRESS]
-        });
+        if (!walletClient) {
+            toast.error("Please connect wallet fully.");
+            return;
+        }
+        
+        setIsSdkPending(true);
+        toast("Sending to Reineira Escrow via SDK...", { icon: '🛡️' });
+        
+        try {
+            const amountBigInt = parseUnits(amount, 6); // Assuming USDC is 6 decimals
+            await createAndFundEscrow(walletClient, amountBigInt, freelancerAddress as string);
+            setSdkSuccess(true);
+            toast.success("Reineira Escrow successfully funded!");
+        } catch (err: any) {
+            console.error(err);
+            toast.error(err.message || "Failed to create/fund Escrow");
+        } finally {
+            setIsSdkPending(false);
+        }
     } else {
         toast("Encrypting direct payment via FHE...", { icon: '🔐' });
         writeContract({
@@ -70,7 +87,9 @@ export default function PaymentPage() {
      }
   }, [isError, error]);
 
-  if (isConfirmed) {
+  const isPending = contractIsPending || isSdkPending;
+
+  if (isConfirmed || sdkSuccess) {
       return (
           <div className="min-h-screen bg-[#0d0d0d] text-green-400 flex items-center justify-center font-mono p-4">
               <Toaster position="top-center" />
@@ -81,7 +100,7 @@ export default function PaymentPage() {
                       {linkIndex !== null ? ' is held in escrow.' : ' was homomorphically encrypted and routed safely on-chain.'}
                   </p>
                   <p className="mt-8 text-xs text-green-700">Powered by Fhenix FHE</p>
-                  <a href={`https://sepolia.etherscan.io/tx/${hash}`} target="_blank" className="text-blue-500 underline text-sm mt-4 inline-block">View Tx Explorer Log</a>
+                  <a href={`https://sepolia.etherscan.io/tx/${hash || ''}`} target="_blank" className="text-blue-500 underline text-sm mt-4 inline-block">View Tx Explorer Log</a>
                   <button onClick={() => router.push('/dashboard')} className="block mx-auto mt-6 bg-green-900/40 border border-green-800 px-6 py-2 rounded text-sm hover:bg-green-800 transition">Return to Dashboard</button>
               </div>
           </div>
