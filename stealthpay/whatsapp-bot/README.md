@@ -26,3 +26,4 @@ This is a WhatsApp bot project built with Node.js.
    ngrok http 3002
    ```
    After running this, copy the `https` Forwarding URL provided by ngrok and use it to configure your WhatsApp webhook settings in the Meta Developer Portal.
+

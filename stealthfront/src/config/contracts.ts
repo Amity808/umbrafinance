@@ -124,5 +124,5 @@ export const STEALTH_PAY_ABI = [
   }
 ] as const;
 
-export const MOCK_STEALTHPAY_ADDRESS = "0x62e85C8cb59F62BdB07689c3813163277cCf171c" as `0x${string}`;
+export const MOCK_STEALTHPAY_ADDRESS = "0xf7c1201561b29be58bea83df8b6a4aa039f4609e" as `0x${string}`;
 export const MOCK_TOKEN_ADDRESS = "0x3378f7798d63Dd6B605706ccb298b999EF323168" as `0x${string}`;
